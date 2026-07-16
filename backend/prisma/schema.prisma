@@ -2,8 +2,27 @@
 // SENOPATI - Prisma Schema
 // System Enterprise Nasional Operasional Pengelolaan Aset Terintegrasi
 // ============================================
-// Model-model akan ditambahkan pada Phase 1.
-// Sumber kebenaran: AGENTS.md dan ERD.md
+// Single Source of Truth: AGENTS.md, ERD.md, ARCHITECT_DECISIONS.md
+// Phase 1 — Database Design (MVP Core)
+// ============================================
+// Domain yang diimplementasikan:
+//   1. Authentication (User, Role, Permission, RolePermission)
+//   2. Master Data
+//   3. Asset Core
+//   4. Asset Details (Vehicle, Inventory, Art, Linen, Supply)
+//   5. Assignment
+//   6. Movement
+//   7. Maintenance
+//   8. Stock Opname
+//   9. Media & Documents
+//  10. Audit Log
+// ============================================
+// Domain yang ditunda:
+//   - Session & PasswordResetToken → Phase 3 (Authentication)
+//   - LoginHistory → Phase 3 (Authentication)
+//   - Notification → Fase berikutnya
+//   - GeneratedReport → Fase berikutnya
+//   - Configuration Tables → Post-MVP
 // ============================================
 
 generator client {
@@ -13,4 +32,963 @@ generator client {
 
 datasource db {
   provider = "mysql"
+}
+
+// ============================================
+// ENUMS
+// ============================================
+
+/// Status penugasan aset kepada karyawan
+enum AssignmentStatus {
+  ACTIVE
+  RETURNED
+  TRANSFERRED
+}
+
+/// Status proses pemeliharaan aset
+enum MaintenanceStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+/// Status sesi stock opname (audit fisik)
+enum StockOpnameStatus {
+  DRAFT
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+/// Hasil pemeriksaan item pada stock opname
+enum StockOpnameResult {
+  MATCH
+  MISMATCH
+  NOT_FOUND
+  DAMAGED
+}
+
+/// Tipe media yang dilampirkan pada aset
+enum MediaType {
+  PHOTO
+  VIDEO
+  IMAGE_360
+  BLUEPRINT
+}
+
+// ============================================
+// DOMAIN 1: AUTHENTICATION & AUTHORIZATION
+// ============================================
+
+/// Menyimpan kredensial dan profil login setiap pengguna sistem
+model User {
+  id            String    @id @default(uuid())
+  employee_id   String?   @unique
+  role_id       String
+  building_id   String? // Scoped RBAC: membatasi akses user ke gedung tertentu (nullable untuk SuperAdmin)
+  username      String    @db.VarChar(100)
+  email         String    @db.VarChar(255)
+  password      String    @db.VarChar(255)
+  is_active     Boolean   @default(true)
+  last_login_at DateTime?
+
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+  created_by String?
+  updated_by String?
+  deleted_by String?
+
+  // --- Relations ---
+  employee Employee? @relation(fields: [employee_id], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  role     Role      @relation(fields: [role_id], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  building Building? @relation(fields: [building_id], references: [id], onUpdate: Cascade, onDelete: Restrict)
+
+  // Relations as actor
+  movements_moved            AssetMovement[]   @relation("MovementMovedBy")
+  movements_approved         AssetMovement[]   @relation("MovementApprovedBy")
+  stock_opnames_created      StockOpname[]     @relation("StockOpnameCreatedBy")
+  stock_opname_items_checked StockOpnameItem[] @relation("StockOpnameItemCheckedBy")
+  media_uploaded             AssetMedia[]      @relation("MediaUploadedBy")
+  documents_uploaded         AssetDocument[]   @relation("DocumentUploadedBy")
+  audit_logs                 AuditLog[]        @relation("AuditLogUser")
+
+  @@unique([username])
+  @@unique([email])
+  @@index([employee_id])
+  @@index([building_id])
+  @@map("users")
+}
+
+/// Mendefinisikan peran akses pengguna (SuperAdmin, AssetManager, Auditor, dll.)
+model Role {
+  id          String  @id @default(uuid())
+  name        String  @db.VarChar(100)
+  description String? @db.Text
+
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  // --- Relations ---
+  users            User[]
+  role_permissions RolePermission[]
+
+  @@unique([name])
+  @@map("roles")
+}
+
+/// Daftar izin akses fungsional per modul dan action
+model Permission {
+  id          String  @id @default(uuid())
+  module      String  @db.VarChar(100)
+  action      String  @db.VarChar(100)
+  description String? @db.Text
+
+  // --- Relations ---
+  role_permissions RolePermission[]
+
+  @@unique([module, action])
+  @@map("permissions")
+}
+
+/// Junction table eksplisit untuk relasi Many-to-Many antara Role dan Permission
+model RolePermission {
+  id            String @id @default(uuid())
+  role_id       String
+  permission_id String
+
+  created_at DateTime @default(now())
+
+  // --- Relations ---
+  role       Role       @relation(fields: [role_id], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  permission Permission @relation(fields: [permission_id], references: [id], onUpdate: Cascade, onDelete: Restrict)
+
+  @@unique([role_id, permission_id])
+  @@map("role_permissions")
+}
+
+// ============================================
+// DOMAIN 2: MASTER DATA
+// ============================================
+
+/// Struktur organisasi / unit kerja internal Sekretariat Negara
+model Department {
+  id              String  @id @default(uuid())
+  department_name String  @db.VarChar(200)
+  department_code String  @db.VarChar(50)
+  description     String? @db.Text
+
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+  created_by String?
+  updated_by String?
+  deleted_by String?
+
+  // --- Relations ---
+  employees Employee[]
+
+  @@unique([department_code])
+  @@map("departments")
+}
+
+/// Data pegawai internal beserta NIP dan posisi jabatan
+model Employee {
+  id            String  @id @default(uuid())
+  department_id String
+  employee_name String  @db.VarChar(200)
+  nip           String  @db.VarChar(50)
+  position      String? @db.VarChar(200)
+  phone         String? @db.VarChar(20)
+  email         String? @db.VarChar(255)
+  status        String  @db.VarChar(50) // active, inactive, retired
+
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+  created_by String?
+  updated_by String?
+  deleted_by String?
+
+  // --- Relations ---
+  department  Department        @relation(fields: [department_id], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  user        User?
+  assets_pic  Asset[]           @relation("AssetCurrentPic")
+  assignments AssetAssignment[]
+
+  @@unique([nip])
+  @@index([department_id])
+  @@index([employee_name])
+  @@map("employees")
+}
+
+/// Gedung fisik dalam kompleks beserta koordinat lokasi
+model Building {
+  id            String  @id @default(uuid())
+  building_code String  @db.VarChar(50)
+  building_name String  @db.VarChar(200)
+  description   String? @db.Text
+  latitude      Float?
+  longitude     Float?
+  is_active     Boolean @default(true)
+
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+  created_by String?
+  updated_by String?
+  deleted_by String?
+
+  // --- Relations ---
+  floors        Floor[]
+  stock_opnames StockOpname[]
+  users         User[]
+
+  @@unique([building_code])
+  @@index([building_name])
+  @@map("buildings")
+}
+
+/// Lantai dalam sebuah gedung
+model Floor {
+  id           String  @id @default(uuid())
+  building_id  String
+  floor_number Int
+  floor_name   String? @db.VarChar(100)
+
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+  created_by String?
+  updated_by String?
+  deleted_by String?
+
+  // --- Relations ---
+  building Building @relation(fields: [building_id], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  zones    Zone[]
+
+  @@index([building_id])
+  @@map("floors")
+}
+
+/// Zona/area dalam sebuah lantai
+model Zone {
+  id          String  @id @default(uuid())
+  floor_id    String
+  zone_name   String  @db.VarChar(200)
+  description String? @db.Text
+
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+  created_by String?
+  updated_by String?
+  deleted_by String?
+
+  // --- Relations ---
+  floor Floor  @relation(fields: [floor_id], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  rooms Room[]
+
+  @@index([floor_id])
+  @@map("zones")
+}
+
+/// Ruangan fisik yang menampung aset — unit terkecil dalam hierarki lokasi
+model Room {
+  id            String  @id @default(uuid())
+  zone_id       String
+  room_code     String  @db.VarChar(50)
+  room_name     String  @db.VarChar(200)
+  room_function String? @db.VarChar(200)
+  description   String? @db.Text
+
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+  created_by String?
+  updated_by String?
+  deleted_by String?
+
+  // --- Relations ---
+  zone                        Zone              @relation(fields: [zone_id], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  assets                      Asset[]
+  movements_from              AssetMovement[]   @relation("MovementFromRoom")
+  movements_to                AssetMovement[]   @relation("MovementToRoom")
+  stock_opname_items_expected StockOpnameItem[] @relation("StockOpnameExpectedRoom")
+  stock_opname_items_actual   StockOpnameItem[] @relation("StockOpnameActualRoom")
+
+  @@unique([room_code])
+  @@index([zone_id])
+  @@index([room_name])
+  @@map("rooms")
+}
+
+/// Kategori utama aset (Vehicle, Inventory, Linen, Supply, Art)
+model AssetCategory {
+  id            String  @id @default(uuid())
+  category_name String  @db.VarChar(100)
+  description   String? @db.Text
+
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+  created_by String?
+  updated_by String?
+  deleted_by String?
+
+  // --- Relations ---
+  asset_types AssetType[]
+  assets      Asset[]
+
+  @@unique([category_name])
+  @@map("asset_categories")
+}
+
+/// Tipe aset dalam suatu kategori (Mobil, Motor, AC, Laptop, dll.)
+model AssetType {
+  id          String  @id @default(uuid())
+  category_id String
+  type_name   String  @db.VarChar(100)
+  description String? @db.Text
+
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+  created_by String?
+  updated_by String?
+  deleted_by String?
+
+  // --- Relations ---
+  category AssetCategory @relation(fields: [category_id], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  assets   Asset[]
+
+  @@index([category_id])
+  @@map("asset_types")
+}
+
+/// Status aset (Active, Maintenance, Borrowed, Disposed, Lost, Archived)
+model AssetStatus {
+  id          String  @id @default(uuid())
+  name        String  @db.VarChar(100)
+  description String? @db.Text
+
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+  created_by String?
+  updated_by String?
+  deleted_by String?
+
+  // --- Relations ---
+  assets Asset[]
+
+  @@unique([name])
+  @@map("asset_statuses")
+}
+
+/// Kondisi fisik aset (Excellent, Good, Minor Damage, Major Damage, Broken, Lost)
+model AssetCondition {
+  id          String  @id @default(uuid())
+  name        String  @db.VarChar(100)
+  description String? @db.Text
+
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+  created_by String?
+  updated_by String?
+  deleted_by String?
+
+  // --- Relations ---
+  assets Asset[]
+
+  @@unique([name])
+  @@map("asset_conditions")
+}
+
+/// Data pihak ketiga penyedia barang dan jasa
+model Vendor {
+  id             String  @id @default(uuid())
+  name           String  @db.VarChar(200)
+  contact_person String? @db.VarChar(200)
+  phone          String? @db.VarChar(20)
+  email          String? @db.VarChar(255)
+  address        String? @db.Text
+
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+  created_by String?
+  updated_by String?
+  deleted_by String?
+
+  // --- Relations ---
+  assets       Asset[]
+  maintenances Maintenance[]
+
+  @@index([name])
+  @@map("vendors")
+}
+
+/// Data pabrikan/manufaktur pembuat aset
+model Manufacturer {
+  id      String  @id @default(uuid())
+  name    String  @db.VarChar(200)
+  country String? @db.VarChar(100)
+
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+  created_by String?
+  updated_by String?
+  deleted_by String?
+
+  // --- Relations ---
+  assets Asset[]
+
+  @@index([name])
+  @@map("manufacturers")
+}
+
+/// Jenis pemeliharaan aset (Preventive, Corrective, dll.)
+model MaintenanceType {
+  id          String  @id @default(uuid())
+  name        String  @db.VarChar(100)
+  description String? @db.Text
+
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+  created_by String?
+  updated_by String?
+  deleted_by String?
+
+  // --- Relations ---
+  maintenances Maintenance[]
+
+  @@unique([name])
+  @@map("maintenance_types")
+}
+
+/// Jenis pergerakan aset (Transfer, Borrowing, Return, dll.)
+model MovementType {
+  id          String  @id @default(uuid())
+  name        String  @db.VarChar(100)
+  description String? @db.Text
+
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+  created_by String?
+  updated_by String?
+  deleted_by String?
+
+  // --- Relations ---
+  movements AssetMovement[]
+
+  @@unique([name])
+  @@map("movement_types")
+}
+
+/// Jenis dokumen pendukung aset (Purchase, Warranty, Certificate, dll.)
+model DocumentType {
+  id          String  @id @default(uuid())
+  name        String  @db.VarChar(100)
+  description String? @db.Text
+
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+  created_by String?
+  updated_by String?
+  deleted_by String?
+
+  // --- Relations ---
+  documents AssetDocument[]
+
+  @@unique([name])
+  @@map("document_types")
+}
+
+// ============================================
+// DOMAIN 3: ASSET CORE
+// ============================================
+
+/// Tabel inti aset — single source of truth untuk setiap objek milik pemerintah
+model Asset {
+  id                  String    @id @default(uuid())
+  asset_code          String    @db.VarChar(100)
+  asset_name          String    @db.VarChar(255)
+  category_id         String
+  type_id             String
+  status_id           String
+  condition_id        String
+  room_id             String?
+  current_pic_id      String?
+  barcode             String?   @db.VarChar(255)
+  qr_code             String?   @db.VarChar(255)
+  rfid_uid            String?   @db.VarChar(255)
+  bmn_code            String?   @db.VarChar(100)
+  nup                 Int?
+  sakti_id            String?   @db.VarChar(100)
+  brand               String?   @db.VarChar(200)
+  model               String?   @db.VarChar(200)
+  serial_number       String?   @db.VarChar(255)
+  purchase_date       DateTime? @db.Date
+  purchase_price      Float?
+  vendor_id           String?
+  manufacturer_id     String?
+  useful_life         Int? // dalam bulan
+  depreciation_method String?   @db.VarChar(100)
+  description         String?   @db.Text
+  is_active           Boolean   @default(true)
+
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+  created_by String?
+  updated_by String?
+  deleted_by String?
+
+  // --- Relations ---
+  category     AssetCategory  @relation(fields: [category_id], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  type         AssetType      @relation(fields: [type_id], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  status       AssetStatus    @relation(fields: [status_id], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  condition    AssetCondition @relation(fields: [condition_id], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  room         Room?          @relation(fields: [room_id], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  current_pic  Employee?      @relation("AssetCurrentPic", fields: [current_pic_id], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  vendor       Vendor?        @relation(fields: [vendor_id], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  manufacturer Manufacturer?  @relation(fields: [manufacturer_id], references: [id], onUpdate: Cascade, onDelete: Restrict)
+
+  // 1:1 Detail Extensions
+  vehicle_detail   VehicleDetail?
+  inventory_detail InventoryDetail?
+  art_detail       ArtDetail?
+  linen_detail     LinenDetail?
+  supply_detail    SupplyDetail?
+
+  // 1:N Relations
+  assignments        AssetAssignment[]
+  movements          AssetMovement[]
+  maintenances       Maintenance[]
+  stock_opname_items StockOpnameItem[]
+  media              AssetMedia[]
+  documents          AssetDocument[]
+
+  @@unique([asset_code])
+  @@unique([qr_code])
+  @@index([rfid_uid])
+  @@index([room_id])
+  @@index([status_id])
+  @@index([condition_id])
+  @@index([category_id])
+  @@index([current_pic_id])
+  @@index([purchase_date])
+  @@index([vendor_id])
+  @@index([manufacturer_id])
+  @@map("assets")
+}
+
+// ============================================
+// DOMAIN 4: ASSET DETAILS (1:1 Extension)
+// ============================================
+
+/// Detail spesifik kendaraan dinas — PK = FK ke assets (Class Table Inheritance)
+model VehicleDetail {
+  asset_id         String    @id
+  plate_number     String?   @db.VarChar(20)
+  engine_number    String?   @db.VarChar(100)
+  chassis_number   String?   @db.VarChar(100)
+  vehicle_type     String?   @db.VarChar(100)
+  fuel_type        String?   @db.VarChar(50)
+  transmission     String?   @db.VarChar(50)
+  color            String?   @db.VarChar(50)
+  production_year  Int?
+  engine_capacity  Int? // dalam cc
+  fuel_capacity    Int? // dalam liter
+  odometer         Int? // dalam km
+  insurance_number String?   @db.VarChar(100)
+  insurance_expiry DateTime? @db.Date
+  stnk_number      String?   @db.VarChar(100)
+  stnk_expiry      DateTime? @db.Date
+  kir_expiry       DateTime? @db.Date
+  next_service     DateTime? @db.Date
+
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+  created_by String?
+  updated_by String?
+  deleted_by String?
+
+  // --- Relations ---
+  asset Asset @relation(fields: [asset_id], references: [id], onUpdate: Cascade, onDelete: Restrict)
+
+  @@index([plate_number])
+  @@map("vehicle_details")
+}
+
+/// Detail spesifik inventaris (furniture, elektronik, peralatan kantor)
+model InventoryDetail {
+  asset_id          String    @id
+  inventory_number  String?   @db.VarChar(100)
+  material          String?   @db.VarChar(200)
+  size              String?   @db.VarChar(100)
+  weight            Float?
+  manufacturer      String?   @db.VarChar(200)
+  warranty_expiry   DateTime? @db.Date
+  expected_lifetime Int? // dalam bulan
+
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+  created_by String?
+  updated_by String?
+  deleted_by String?
+
+  // --- Relations ---
+  asset Asset @relation(fields: [asset_id], references: [id], onUpdate: Cascade, onDelete: Restrict)
+
+  @@index([inventory_number])
+  @@map("inventory_details")
+}
+
+/// Detail spesifik karya seni, artefak historis, dan koleksi museum
+model ArtDetail {
+  asset_id               String  @id
+  artist                 String? @db.VarChar(200)
+  art_style              String? @db.VarChar(100)
+  origin                 String? @db.VarChar(200)
+  creation_year          Int?
+  material               String? @db.VarChar(200)
+  width                  Float? // dalam cm
+  height                 Float? // dalam cm
+  depth                  Float? // dalam cm
+  estimated_value        Float?
+  historical_description String? @db.Text
+  preservation_notes     String? @db.Text
+  restoration_notes      String? @db.Text
+
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+  created_by String?
+  updated_by String?
+  deleted_by String?
+
+  // --- Relations ---
+  asset Asset @relation(fields: [asset_id], references: [id], onUpdate: Cascade, onDelete: Restrict)
+
+  @@map("art_details")
+}
+
+/// Detail spesifik linen (sprei, handuk, dll.) beserta siklus penggunaan
+model LinenDetail {
+  asset_id          String  @id
+  linen_type        String? @db.VarChar(100)
+  material          String? @db.VarChar(200)
+  size              String? @db.VarChar(100)
+  color             String? @db.VarChar(50)
+  wash_cycle        Int?    @default(0) // jumlah siklus cuci
+  replacement_cycle Int? // batas siklus cuci sebelum penggantian
+
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+  created_by String?
+  updated_by String?
+  deleted_by String?
+
+  // --- Relations ---
+  asset Asset @relation(fields: [asset_id], references: [id], onUpdate: Cascade, onDelete: Restrict)
+
+  @@map("linen_details")
+}
+
+/// Detail spesifik barang habis pakai (supplies) beserta informasi stok
+model SupplyDetail {
+  asset_id        String    @id
+  unit            String?   @db.VarChar(50)
+  minimum_stock   Int?      @default(0)
+  maximum_stock   Int?
+  reorder_level   Int?
+  current_stock   Int       @default(0)
+  expiration_date DateTime? @db.Date
+
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+  created_by String?
+  updated_by String?
+  deleted_by String?
+
+  // --- Relations ---
+  asset Asset @relation(fields: [asset_id], references: [id], onUpdate: Cascade, onDelete: Restrict)
+
+  @@map("supply_details")
+}
+
+// ============================================
+// DOMAIN 5: ASSIGNMENT
+// ============================================
+
+/// Pencatatan penugasan/peminjaman aset kepada karyawan (append-only history)
+model AssetAssignment {
+  id               String           @id @default(uuid())
+  asset_id         String
+  employee_id      String
+  assigned_at      DateTime         @default(now())
+  returned_at      DateTime?
+  assignment_notes String?          @db.Text
+  status           AssignmentStatus @default(ACTIVE)
+
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+  created_by String?
+  updated_by String?
+  deleted_by String?
+
+  // --- Relations ---
+  asset    Asset    @relation(fields: [asset_id], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  employee Employee @relation(fields: [employee_id], references: [id], onUpdate: Cascade, onDelete: Restrict)
+
+  @@index([asset_id, created_at])
+  @@index([employee_id])
+  @@map("asset_assignments")
+}
+
+// ============================================
+// DOMAIN 6: MOVEMENT
+// ============================================
+
+/// Riwayat pergerakan lokasi aset dari ruangan asal ke ruangan tujuan
+model AssetMovement {
+  id               String   @id @default(uuid())
+  asset_id         String
+  from_room_id     String?
+  to_room_id       String?
+  movement_type_id String
+  reason           String?  @db.Text
+  moved_by         String
+  movement_date    DateTime @default(now())
+  approved_by      String?
+  notes            String?  @db.Text
+
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+  created_by String?
+  updated_by String?
+  deleted_by String?
+
+  // --- Relations ---
+  asset         Asset        @relation(fields: [asset_id], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  from_room     Room?        @relation("MovementFromRoom", fields: [from_room_id], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  to_room       Room?        @relation("MovementToRoom", fields: [to_room_id], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  movement_type MovementType @relation(fields: [movement_type_id], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  mover         User         @relation("MovementMovedBy", fields: [moved_by], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  approver      User?        @relation("MovementApprovedBy", fields: [approved_by], references: [id], onUpdate: Cascade, onDelete: Restrict)
+
+  @@index([asset_id, created_at])
+  @@index([asset_id, movement_date])
+  @@index([from_room_id])
+  @@index([to_room_id])
+  @@index([movement_type_id])
+  @@index([moved_by])
+  @@index([movement_date])
+  @@map("asset_movements")
+}
+
+// ============================================
+// DOMAIN 7: MAINTENANCE
+// ============================================
+
+/// Riwayat pemeliharaan dan perbaikan aset (append-only, tidak boleh dimodifikasi)
+model Maintenance {
+  id                  String            @id @default(uuid())
+  asset_id            String
+  maintenance_type_id String
+  vendor_id           String?
+  maintenance_date    DateTime          @db.Date
+  cost                Float?
+  description         String?           @db.Text
+  next_schedule       DateTime?         @db.Date
+  status              MaintenanceStatus @default(SCHEDULED)
+
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+  created_by String?
+  updated_by String?
+  deleted_by String?
+
+  // --- Relations ---
+  asset            Asset           @relation(fields: [asset_id], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  maintenance_type MaintenanceType @relation(fields: [maintenance_type_id], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  vendor           Vendor?         @relation(fields: [vendor_id], references: [id], onUpdate: Cascade, onDelete: Restrict)
+
+  @@index([asset_id, created_at])
+  @@index([maintenance_type_id])
+  @@index([vendor_id])
+  @@index([maintenance_date])
+  @@map("maintenances")
+}
+
+// ============================================
+// DOMAIN 8: STOCK OPNAME
+// ============================================
+
+/// Sesi audit fisik inventarisasi aset per gedung
+model StockOpname {
+  id           String            @id @default(uuid())
+  session_name String            @db.VarChar(200)
+  building_id  String
+  created_by   String
+  started_at   DateTime?
+  finished_at  DateTime?
+  status       StockOpnameStatus @default(DRAFT)
+
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+  // created_by sudah digunakan sebagai FK di atas
+  updated_by String?
+  deleted_by String?
+
+  // --- Relations ---
+  building Building          @relation(fields: [building_id], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  creator  User              @relation("StockOpnameCreatedBy", fields: [created_by], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  items    StockOpnameItem[]
+
+  @@index([building_id])
+  @@index([created_by])
+  @@index([status])
+  @@map("stock_opnames")
+}
+
+/// Detail pemeriksaan per item aset dalam sesi stock opname
+model StockOpnameItem {
+  id              String             @id @default(uuid())
+  stock_opname_id String
+  asset_id        String
+  expected_room   String?
+  actual_room     String?
+  condition       String?            @db.VarChar(100) // Snapshot teks kondisi saat audit (denormalisasi historis)
+  result          StockOpnameResult?
+  notes           String?            @db.Text
+  checked_by      String?
+  checked_at      DateTime?
+
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+  created_by String?
+  updated_by String?
+  deleted_by String?
+
+  // --- Relations ---
+  stock_opname      StockOpname @relation(fields: [stock_opname_id], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  asset             Asset       @relation(fields: [asset_id], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  expected_room_ref Room?       @relation("StockOpnameExpectedRoom", fields: [expected_room], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  actual_room_ref   Room?       @relation("StockOpnameActualRoom", fields: [actual_room], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  checker           User?       @relation("StockOpnameItemCheckedBy", fields: [checked_by], references: [id], onUpdate: Cascade, onDelete: Restrict)
+
+  @@index([stock_opname_id])
+  @@index([asset_id])
+  @@index([checked_by])
+  @@map("stock_opname_items")
+}
+
+// ============================================
+// DOMAIN 9: MEDIA & DOCUMENTS
+// ============================================
+
+/// File media visual yang dilampirkan pada aset (foto, video, 360°, blueprint)
+model AssetMedia {
+  id             String    @id @default(uuid())
+  asset_id       String
+  file_name      String    @db.VarChar(255)
+  file_type      MediaType
+  file_size      Int // dalam bytes
+  mime_type      String    @db.VarChar(100)
+  storage_path   String    @db.VarChar(500)
+  thumbnail_path String?   @db.VarChar(500)
+  uploaded_by    String
+  uploaded_at    DateTime  @default(now())
+
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+  created_by String?
+  updated_by String?
+  deleted_by String?
+
+  // --- Relations ---
+  asset    Asset @relation(fields: [asset_id], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  uploader User  @relation("MediaUploadedBy", fields: [uploaded_by], references: [id], onUpdate: Cascade, onDelete: Restrict)
+
+  @@index([asset_id])
+  @@index([uploaded_by])
+  @@map("asset_media")
+}
+
+/// Dokumen pendukung aset (sertifikat, BPKB, invoice, garansi, dll.)
+model AssetDocument {
+  id               String   @id @default(uuid())
+  asset_id         String
+  document_type_id String
+  document_name    String   @db.VarChar(255)
+  file_path        String   @db.VarChar(500)
+  version          String?  @db.VarChar(50)
+  uploaded_by      String
+  uploaded_at      DateTime @default(now())
+
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+  created_by String?
+  updated_by String?
+  deleted_by String?
+
+  // --- Relations ---
+  asset         Asset        @relation(fields: [asset_id], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  document_type DocumentType @relation(fields: [document_type_id], references: [id], onUpdate: Cascade, onDelete: Restrict)
+  uploader      User         @relation("DocumentUploadedBy", fields: [uploaded_by], references: [id], onUpdate: Cascade, onDelete: Restrict)
+
+  @@index([asset_id])
+  @@index([document_type_id])
+  @@index([uploaded_by])
+  @@map("asset_documents")
+}
+
+// ============================================
+// DOMAIN 10: AUDIT LOG
+// ============================================
+
+/// Catatan aktivitas transaksional pengguna untuk akuntabilitas (immutable)
+model AuditLog {
+  id         String  @id @default(uuid())
+  user_id    String
+  module     String  @db.VarChar(100)
+  action     String  @db.VarChar(100)
+  table_name String  @db.VarChar(100)
+  record_id  String  @db.VarChar(100)
+  old_value  String? @db.LongText
+  new_value  String? @db.LongText
+  ip_address String? @db.VarChar(45)
+  user_agent String? @db.Text
+
+  created_at DateTime @default(now())
+
+  // --- Relations ---
+  user User @relation("AuditLogUser", fields: [user_id], references: [id], onUpdate: Cascade, onDelete: Restrict)
+
+  @@index([user_id])
+  @@index([module])
+  @@index([table_name])
+  @@index([record_id])
+  @@index([created_at])
+  @@map("audit_logs")
 }
