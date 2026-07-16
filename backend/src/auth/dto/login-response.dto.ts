@@ -9,6 +9,7 @@ export class UserSummaryDto {
 
 export class LoginResponseDto {
   accessToken: string;
+  refreshToken: string;
   expiresIn: string;
   user: UserSummaryDto;
 }

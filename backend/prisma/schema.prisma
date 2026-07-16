@@ -113,6 +113,7 @@ model User {
   media_uploaded             AssetMedia[]      @relation("MediaUploadedBy")
   documents_uploaded         AssetDocument[]   @relation("DocumentUploadedBy")
   audit_logs                 AuditLog[]        @relation("AuditLogUser")
+  sessions                   Session[]
 
   @@unique([username])
   @@unique([email])
@@ -991,4 +992,28 @@ model AuditLog {
   @@index([record_id])
   @@index([created_at])
   @@map("audit_logs")
+}
+
+// ============================================
+// DOMAIN 13: SESSION
+// ============================================
+
+model Session {
+  id               String    @id @default(uuid())
+  userId           String    @map("user_id")
+  refreshTokenHash String    @map("refresh_token_hash") @db.VarChar(255)
+  ipAddress        String?   @map("ip_address") @db.VarChar(100)
+  userAgent        String?   @map("user_agent") @db.VarChar(500)
+  expiresAt        DateTime  @map("expires_at")
+  lastUsedAt       DateTime? @map("last_used_at")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+  deletedAt        DateTime? @map("deleted_at")
+
+  user User @relation(fields: [userId], references: [id], onUpdate: Cascade, onDelete: Restrict)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([refreshTokenHash])
+  @@map("sessions")
 }
