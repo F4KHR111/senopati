@@ -1,7 +1,8 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { type ReactNode } from "react";
 import { QueryProvider } from "./query-provider";
+import { ToastContainer } from "@/shared/components/toast-container";
 
 /**
  * AppProviders menggabungkan seluruh provider aplikasi.
@@ -9,5 +10,11 @@ import { QueryProvider } from "./query-provider";
  * Satu file ini menjadi satu-satunya tempat menambahkan provider baru.
  */
 export function AppProviders({ children }: { children: ReactNode }) {
-  return <QueryProvider>{children}</QueryProvider>;
+  return (
+    <QueryProvider>
+      {children}
+      <ToastContainer />
+    </QueryProvider>
+  );
 }
+
