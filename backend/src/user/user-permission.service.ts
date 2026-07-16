@@ -27,6 +27,20 @@ export class UserPermissionService {
     return permissions;
   }
 
+  isGlobalRole(roleName: string): boolean {
+    return roleName === 'Super Admin';
+  }
+
+  hasDepartmentScope(user: any, departmentId?: string): boolean {
+    if (!departmentId) return false;
+    return user?.departmentId === departmentId;
+  }
+
+  hasBuildingScope(user: any, buildingId?: string): boolean {
+    if (!buildingId) return false;
+    return user?.buildingId === buildingId;
+  }
+
   clearCache() {
     this.permissionCache.clear();
   }

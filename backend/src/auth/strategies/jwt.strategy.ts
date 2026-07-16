@@ -21,6 +21,14 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     if (!user.is_active) {
       throw new UnauthorizedException('User account is disabled');
     }
-    return user; // Becomes available as request.user
+    return {
+      id: user.id,
+      username: user.username,
+      email: user.email,
+      role_id: user.role_id,
+      role: user.role,
+      departmentId: user.employee?.department_id || null,
+      buildingId: user.building_id,
+    };
   }
 }

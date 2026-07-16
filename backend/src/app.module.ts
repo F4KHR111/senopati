@@ -8,6 +8,7 @@ import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/guards/jwt.guard';
 import { RolesGuard } from './auth/guards/roles.guard';
 import { PermissionsGuard } from './auth/guards/permissions.guard';
+import { ScopeGuard } from './auth/guards/scope.guard';
 
 @Module({
   imports: [PrismaModule, UserModule, AuthModule],
@@ -25,6 +26,10 @@ import { PermissionsGuard } from './auth/guards/permissions.guard';
     {
       provide: APP_GUARD,
       useClass: PermissionsGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: ScopeGuard,
     },
   ],
 })
