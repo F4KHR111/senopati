@@ -1,0 +1,16 @@
+// ============================================
+// SENOPATI - Prisma Schema
+// System Enterprise Nasional Operasional Pengelolaan Aset Terintegrasi
+// ============================================
+// Model-model akan ditambahkan pada Phase 1.
+// Sumber kebenaran: AGENTS.md dan ERD.md
+// ============================================
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "mysql"
+}
