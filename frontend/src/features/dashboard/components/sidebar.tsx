@@ -16,33 +16,47 @@ import {
   ChevronLeft,
   ChevronRight,
   Shield,
+  Users,
+  Settings,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useLayoutStore } from "@/stores";
+import { useLayoutStore, type UserRole } from "@/stores";
 
-const navItems = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/dashboard/map", label: "Interactive Map", icon: Map },
-  { href: "/dashboard/vehicle", label: "Kendaraan", icon: Car },
-  { href: "/dashboard/art", label: "Benda Seni", icon: Paintbrush },
-  { href: "/dashboard/inventory", label: "Inventaris", icon: Laptop },
-  { href: "/dashboard/linen", label: "Linen", icon: Shirt },
-  { href: "/dashboard/supply", label: "Persediaan", icon: Package },
-  { href: "/dashboard/reports", label: "Laporan", icon: FileText },
-  { href: "/dashboard/audit", label: "Audit Logs", icon: History },
+interface NavItem {
+  href: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  allowedRoles: UserRole[];
+}
+
+const navItems: NavItem[] = [
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, allowedRoles: ["SuperAdmin", "AssetManager", "Auditor"] },
+  { href: "/dashboard/map", label: "Interactive Map", icon: Map, allowedRoles: ["SuperAdmin", "AssetManager", "Auditor"] },
+  { href: "/dashboard/vehicle", label: "Kendaraan", icon: Car, allowedRoles: ["SuperAdmin", "AssetManager"] },
+  { href: "/dashboard/art", label: "Benda Seni", icon: Paintbrush, allowedRoles: ["SuperAdmin", "AssetManager"] },
+  { href: "/dashboard/inventory", label: "Inventaris", icon: Laptop, allowedRoles: ["SuperAdmin", "AssetManager"] },
+  { href: "/dashboard/linen", label: "Linen", icon: Shirt, allowedRoles: ["SuperAdmin", "AssetManager"] },
+  { href: "/dashboard/supply", label: "Persediaan", icon: Package, allowedRoles: ["SuperAdmin", "AssetManager"] },
+  { href: "/dashboard/reports", label: "Laporan", icon: FileText, allowedRoles: ["SuperAdmin", "AssetManager", "Auditor"] },
+  { href: "/dashboard/audit", label: "Audit Logs", icon: History, allowedRoles: ["SuperAdmin", "Auditor"] },
+  { href: "/dashboard/users", label: "Pengguna", icon: Users, allowedRoles: ["SuperAdmin"] },
+  { href: "/dashboard/settings", label: "Pengaturan", icon: Settings, allowedRoles: ["SuperAdmin"] },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { isSidebarCollapsed, toggleSidebarCollapse, isMobileSidebarOpen, setMobileSidebar } =
+  const { isSidebarCollapsed, toggleSidebarCollapse, isMobileSidebarOpen, setMobileSidebar, userRole } =
     useLayoutStore();
 
   const handleNavClick = () => {
     if (isMobileSidebarOpen) setMobileSidebar(false);
   };
 
+  // Filter items based on the active mock user role
+  const visibleNavItems = navItems.filter((item) => item.allowedRoles.includes(userRole));
+
   const sidebarContent = (
-    <div className="flex h-full flex-col bg-primary text-text-inverse border-r border-primary-light">
+    <div className="flex h-full flex-col bg-primary text-text-inverse border-r border-primary-light select-none">
       {/* Brand Header */}
       <div className="flex h-16 items-center justify-between px-6 border-b border-primary-light">
         <Link href="/dashboard" className="flex items-center gap-3" onClick={handleNavClick}>
@@ -62,7 +76,7 @@ export function Sidebar() {
         {!isSidebarCollapsed && (
           <button
             onClick={toggleSidebarCollapse}
-            className="hidden md:flex h-6 w-6 items-center justify-center rounded-md hover:bg-primary-light text-text-tertiary hover:text-text-inverse transition-colors"
+            className="hidden md:flex h-6 w-6 items-center justify-center rounded-md hover:bg-primary-light text-text-tertiary hover:text-text-inverse transition-colors cursor-pointer"
             aria-label="Tutup sidebar"
           >
             <ChevronLeft className="h-4 w-4" />
@@ -70,9 +84,9 @@ export function Sidebar() {
         )}
       </div>
 
-      {/* Navigation */}
-      <nav className="flex-1 space-y-1.5 px-4 py-6 overflow-y-auto">
-        {navItems.map((item) => {
+      {/* Navigation List */}
+      <nav className="flex-1 space-y-1 px-4 py-6 overflow-y-auto">
+        {visibleNavItems.map((item) => {
           const isActive = pathname === item.href;
           const Icon = item.icon;
 
@@ -82,7 +96,7 @@ export function Sidebar() {
               href={item.href}
               onClick={handleNavClick}
               className={cn(
-                "group flex items-center gap-3.5 px-3.5 py-2.5 rounded-lg text-xs font-semibold tracking-wide transition-colors",
+                "group flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold tracking-wide transition-colors",
                 isActive
                   ? "bg-accent text-primary font-bold shadow-sm"
                   : "text-text-tertiary hover:bg-primary-light hover:text-text-inverse"
@@ -90,7 +104,7 @@ export function Sidebar() {
             >
               <Icon
                 className={cn(
-                  "h-4.5 w-4.5 shrink-0 transition-colors",
+                  "h-4 w-4 shrink-0 transition-colors",
                   isActive ? "text-primary" : "text-text-tertiary group-hover:text-text-inverse"
                 )}
               />
@@ -113,7 +127,7 @@ export function Sidebar() {
         <div className="hidden md:flex h-12 items-center justify-center border-t border-primary-light">
           <button
             onClick={toggleSidebarCollapse}
-            className="h-8 w-8 flex items-center justify-center rounded-md hover:bg-primary-light text-text-tertiary hover:text-text-inverse transition-colors"
+            className="h-8 w-8 flex items-center justify-center rounded-md hover:bg-primary-light text-text-tertiary hover:text-text-inverse transition-colors cursor-pointer"
             aria-label="Buka sidebar"
           >
             <ChevronRight className="h-4 w-4" />
@@ -140,7 +154,7 @@ export function Sidebar() {
         {isMobileSidebarOpen && (
           <div
             onClick={() => setMobileSidebar(false)}
-            className="fixed inset-0 bg-primary/45 backdrop-blur-xs transition-opacity duration-300"
+            className="fixed inset-0 bg-primary/45 backdrop-blur-xs transition-opacity duration-300 pointer-events-auto"
           />
         )}
 

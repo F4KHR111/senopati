@@ -1,21 +1,29 @@
-export * from "./avatar";
-export * from "./badge";
-export * from "./button";
-export * from "./card";
-export * from "./checkbox";
-export * from "./dialog";
-export * from "./dropdown";
-export * from "./empty-state";
-export * from "./input";
-export * from "./modal";
-export * from "./pagination";
-export * from "./search";
-export * from "./select";
-export * from "./skeleton";
-export * from "./spinner";
-export * from "./switch";
-export * from "./table";
-export * from "./tabs";
-export * from "./textarea";
-export * from "./toast-item";
-export * from "./toast-container";
+// UI Elements
+export * from "./ui/avatar";
+export * from "./ui/badge";
+export * from "./ui/button";
+export * from "./ui/card";
+export * from "./ui/checkbox";
+export * from "./ui/input";
+export * from "./ui/select";
+export * from "./ui/search";
+export * from "./ui/skeleton";
+export * from "./ui/spinner";
+export * from "./ui/switch";
+export * from "./ui/table";
+export * from "./ui/textarea";
+
+// Navigation
+export * from "./navigation/pagination";
+export * from "./navigation/tabs";
+export * from "./navigation/breadcrumb";
+
+// Feedback
+export * from "./feedback/empty-state";
+export * from "./feedback/toast-item";
+export * from "./feedback/toast-container";
+
+// Overlay
+export * from "./overlay/modal";
+export * from "./overlay/dialog";
+export * from "./overlay/dropdown";

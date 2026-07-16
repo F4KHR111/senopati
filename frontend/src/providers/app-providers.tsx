@@ -2,7 +2,7 @@
 
 import { type ReactNode } from "react";
 import { QueryProvider } from "./query-provider";
-import { ToastContainer } from "@/shared/components/toast-container";
+import { ToastContainer } from "@/shared/components";
 
 /**
  * AppProviders menggabungkan seluruh provider aplikasi.

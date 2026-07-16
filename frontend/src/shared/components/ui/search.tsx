@@ -3,7 +3,7 @@
 import { useEffect, useState, type ComponentPropsWithoutRef } from "react";
 import { Search as SearchIcon, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useDebounce } from "../hooks/use-debounce";
+import { useDebounce } from "@/shared/hooks";
 
 export interface SearchProps extends Omit<ComponentPropsWithoutRef<"input">, "onChange" | "value"> {
   onSearch: (value: string) => void;

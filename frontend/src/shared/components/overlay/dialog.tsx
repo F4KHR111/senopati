@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { AlertCircle, CheckCircle, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { fadeIn, scaleIn, easeTransition } from "@/lib/animations";
-import { Button } from "./button";
+import { Button } from "../ui/button";
 
 export interface DialogProps {
   isOpen: boolean;

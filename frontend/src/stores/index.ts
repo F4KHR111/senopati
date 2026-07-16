@@ -1,2 +1,2 @@
 export { useToastStore, type Toast } from "./toast-store";
-export { useLayoutStore } from "./layout-store";
+export { useLayoutStore, type UserRole } from "./layout-store";
