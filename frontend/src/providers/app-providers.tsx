@@ -2,6 +2,7 @@
 
 import { type ReactNode } from "react";
 import { QueryProvider } from "./query-provider";
+import { AuthProvider } from "./auth-provider";
 import { ToastContainer } from "@/shared/components";
 
 /**
@@ -12,8 +13,10 @@ import { ToastContainer } from "@/shared/components";
 export function AppProviders({ children }: { children: ReactNode }) {
   return (
     <QueryProvider>
-      {children}
-      <ToastContainer />
+      <AuthProvider>
+        {children}
+        <ToastContainer />
+      </AuthProvider>
     </QueryProvider>
   );
 }

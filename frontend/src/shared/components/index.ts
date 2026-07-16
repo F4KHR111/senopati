@@ -13,6 +13,9 @@ export * from "./ui/switch";
 export * from "./ui/table";
 export * from "./ui/textarea";
 
+// Layout
+export * from "./layout/auth-guard";
+
 // Navigation
 export * from "./navigation/pagination";
 export * from "./navigation/tabs";

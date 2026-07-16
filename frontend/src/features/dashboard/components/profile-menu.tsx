@@ -1,32 +1,47 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { LogOut, User as UserIcon, Activity } from "lucide-react";
 import { Avatar, Dropdown } from "@/shared/components";
+import { useAuthStore } from "@/stores";
 
 export function ProfileMenu() {
-  const handleLogout = () => {
-    alert("Keluar dari aplikasi...");
+  const { user, logout } = useAuthStore();
+  const router = useRouter();
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      router.push("/login");
+    } catch (err) {
+      console.error("Gagal logout:", err);
+    }
   };
 
   const handleProfile = () => {
-    alert("Buka profil...");
+    alert(`Profil: ${user?.name}\nJabatan: ${user?.position}`);
   };
 
   const handleActivities = () => {
-    alert("Buka aktivitas audit...");
+    router.push("/dashboard/audit");
+  };
+
+  const getInitials = () => {
+    if (!user?.name) return "US";
+    return user.name.slice(0, 2).toUpperCase();
   };
 
   return (
     <Dropdown
       trigger={
-        <button className="flex items-center gap-2 rounded-full focus:outline-none p-0.5 hover:bg-bg-secondary border border-transparent hover:border-border transition-colors">
-          <Avatar src="" alt="Fakhrul" fallback="FK" size="sm" />
+        <button className="flex items-center gap-2 rounded-full focus:outline-none p-0.5 hover:bg-bg-secondary border border-transparent hover:border-border transition-colors cursor-pointer">
+          <Avatar src={user?.avatarUrl} alt={user?.name || "User"} fallback={getInitials()} size="sm" />
         </button>
       }
       items={[
         {
           id: "header",
-          label: "Supriyadi (NIP. 1988...)\nSekretariat Negara",
+          label: `${user?.name || "Staf Setneg"} (NIP. ${user?.nip || "19..."})\n${user?.position || "Pegawai"}`,
           disabled: true,
           onClick: () => {},
         },
