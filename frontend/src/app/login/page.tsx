@@ -33,8 +33,9 @@ export default function LoginPage() {
         description: `Selamat datang kembali, ${username}!`,
       });
       router.push("/dashboard");
-    } catch (err: any) {
-      setErrorMsg(err.message || "Gagal masuk ke sistem.");
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Gagal masuk ke sistem.";
+      setErrorMsg(message);
     }
   };
 

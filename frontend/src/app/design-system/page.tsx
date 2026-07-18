@@ -15,7 +15,6 @@ import {
   CardTitle,
   CardDescription,
   CardContent,
-  CardFooter,
   Modal,
   Dialog,
   Table,
@@ -32,7 +31,7 @@ import {
   EmptyState,
 } from "@/shared/components";
 import { useToastStore } from "@/stores";
-import { Info, AlertTriangle, CheckCircle, MoreVertical, Trash, Edit, Star } from "lucide-react";
+import { MoreVertical, Trash, Edit, Star } from "lucide-react";
 
 export default function DesignSystemShowcase() {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -195,7 +194,7 @@ export default function DesignSystemShowcase() {
               <Search onSearch={setSearchVal} placeholder="Cari kode aset, nama, atau lokasi..." />
               {searchVal && (
                 <p className="text-xs text-text-tertiary">
-                  Hasil pencarian ter-debounce untuk: <span className="font-semibold text-text-primary">"{searchVal}"</span>
+                  Hasil pencarian ter-debounce untuk: <span className="font-semibold text-text-primary">&quot;{searchVal}&quot;</span>
                 </p>
               )}
             </div>

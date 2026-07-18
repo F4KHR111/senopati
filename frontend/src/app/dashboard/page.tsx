@@ -9,7 +9,6 @@ import {
   CardDescription,
   CardContent,
   Button,
-  Badge,
 } from "@/shared/components";
 import {
   Shield,
@@ -20,8 +19,6 @@ import {
   Package,
   Map,
   TrendingUp,
-  History,
-  ArrowRight,
   AlertTriangle,
   CheckCircle,
   Clock,
